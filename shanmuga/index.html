@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PDF Resume Viewer</title>
+  </head>
+  <body>
+    <h2>PDF.js Resume Viewer</h2>
+    <canvas id="resume-canvas"></canvas>
+
+    <script type="module">
+      import * as pdfjsLib from './pdf.mjs';
+
+      const url = './resume.pdf';
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
+
+      const loadingTask = pdfjsLib.getDocument(url);
+      loadingTask.promise.then(pdf => {
+        pdf.getPage(1).then(page => {
+          const scale = 1.5;
+          const viewport = page.getViewport({ scale });
+          const canvas = document.getElementById('resume-canvas');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          page.render({ canvasContext: context, viewport });
+        });
+      });
+    </script>
+  </body>
+</html>
