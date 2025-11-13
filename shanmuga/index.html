@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PDF Resume Viewer</title>
 
+    <!-- Minimal clean style -->
     <style>
       body {
         font-family: "Segoe UI", Arial, sans-serif;
@@ -42,28 +43,20 @@
         border-radius: 8px;
         background: white;
       }
-      .section { margin-bottom: 40px; }
+      .section {
+        margin-bottom: 40px;
+      }
       .row {
         display: flex;
         gap: 12px;
         align-items: center;
         flex-wrap: wrap;
       }
-      .photo-wrapper {
-        text-align: center;
-        margin: 20px 0;
-      }
-      .photo-wrapper img {
-        border-radius: 50%;
-        width: 120px;
-        height: 120px;
-        border: 3px solid #ccc;
-        box-shadow: 0 0 8px rgba(0,0,0,0.1);
-      }
     </style>
   </head>
 
   <body>
+    <!-- ========== PDF Extraction Section ========== -->
     <div class="section">
       <h2>Extracted Resume Data (from PDF)</h2>
 
@@ -71,9 +64,10 @@
         import * as pdfjsLib from './pdf.mjs';
         const url = './shanmuga-priya-resume.pdf';
         pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
-        const loadingTask = pdfjsLib.getDocument(url);
 
+        const loadingTask = pdfjsLib.getDocument(url);
         loadingTask.promise.then(pdf => {
+          console.log(`PDF loaded with ${pdf.numPages} pages`);
           const textPromises = [];
           for (let i = 1; i <= pdf.numPages; i++) {
             textPromises.push(
@@ -86,19 +80,35 @@
           }
           Promise.all(textPromises).then(pages => {
             const fullText = pages.join('\n\n');
+            console.log('Extracted Text:', fullText);
+
             const name = fullText.match(/^[A-Za-z\s]+/g)?.[0]?.trim() || '';
             const email =
               fullText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0] || '';
             const linkedin =
               fullText.match(/linkedin\.com\/[A-Za-z0-9\/\-\._]+/i)?.[0] || '';
-            const jsonData = { name, email, linkedin };
+            const phone =
+              fullText.match(/(\+?\d{1,2}\s?)?(\(?\d{3}\)?[\s\-]?)?\d{3}[\s\-]?\d{4}/)?.[0] || '';
+            const education =
+              fullText.match(/Education[\s\S]*?(?=Skills|Technical|Experience|$)/i)?.[0] || '';
+            const skills =
+              fullText.match(/Skills[\s\S]*?(?=Experience|Projects|$)/i)?.[0] || '';
+            const experience =
+              fullText.match(/Experience[\s\S]*?(?=Projects|Certifications|$)/i)?.[0] || '';
+
+            const jsonData = { name, email, linkedin, phone, education, skills, experience };
+
             const pre = document.createElement('pre');
             pre.textContent = JSON.stringify(jsonData, null, 2);
             document.body.appendChild(pre);
+
+            console.log('Structured JSON Output (from PDF):', jsonData);
           });
         });
       </script>
     </div>
+
+    <!-- ========== Theme + JSON Source Section ========== -->
     <div class="section">
       <h3>Preview JSON Résumé Themes</h3>
 
@@ -128,16 +138,15 @@
 
       <div style="margin: 15px 0;"></div>
 
+      <!-- Theme preview FIRST -->
+      <iframe id="themePreview" title="JSON Resume Theme Preview"></iframe>
+
+      <!-- JSON preview AFTER the resume -->
       <pre id="dataPreview">Loading JSON…</pre>
 
-      <div class="photo-wrapper">
-        <img id="gravatarPhoto" alt="Profile Photo" src="" />
-        <div style="font-size:13px;color:#555;">Bio photo (via Gravatar)</div>
-      </div>
-
-      <iframe id="themePreview" title="JSON Resume Theme Preview"></iframe>
       <div id="dataStatus" style="margin-top:8px;font:13px/1.4 system-ui;"></div>
 
+      <!-- URL Parameter + Loader Logic (with timing) -->
       <script>
         const $ = (sel) => document.querySelector(sel);
         const jsonSelect   = $("#jsonSelect");
@@ -147,18 +156,18 @@
         const statusBox    = $("#dataStatus");
         const registryBase = "https://registry.jsonresume.org/thomasdavis?theme=";
 
-        const themeCache = new Map();
-
         function getParam(name, fallback) {
           const v = new URLSearchParams(location.search).get(name);
           return v ?? fallback;
         }
+
         function setParamInURL(params) {
           const url = new URL(location.href);
-          Object.entries(params).forEach(([k,v])=>{
-            if(v==null)url.searchParams.delete(k); else url.searchParams.set(k,v);
+          Object.entries(params).forEach(([k, v]) => {
+            if (v == null) url.searchParams.delete(k);
+            else url.searchParams.set(k, v);
           });
-          history.replaceState(null,"",url.toString());
+          history.replaceState(null, "", url.toString());
         }
 
         async function loadJson(file) {
@@ -170,102 +179,93 @@
             statusBox.textContent = `Loaded ${file} — ${Object.keys(json).length} sections`;
             return json;
           } catch (e) {
-            dataPreview.textContent = `Failed to load ${file}`;
-            statusBox.textContent = "JSON load failed";
+            console.error("Failed to load JSON:", e);
+            dataPreview.textContent = `⚠️ Failed to load ${file}`;
+            statusBox.textContent = "⚠️ JSON load failed";
             return null;
           }
         }
 
-        async function loadTheme(themeName) {
+        // Measure load time
+        function loadTheme(themeName) {
           const url = registryBase + encodeURIComponent(themeName);
-          const start = performance.now();
-          if (themeCache.has(url)) {
-            previewFrame.src = themeCache.get(url);
-            const duration = performance.now() - start;
-            statusBox.textContent = `Theme "${themeName}" loaded from cache in ${duration.toFixed(1)} ms`;
-            return;
-          }
-          const preloader = document.createElement("iframe");
-          preloader.style.display = "none";
-          preloader.src = url;
-          preloader.onload = () => {
-            themeCache.set(url, url);
-            previewFrame.src = url;
-            const duration = performance.now() - start;
-            statusBox.textContent = `Theme "${themeName}" loaded in ${duration.toFixed(1)} ms`;
-            preloader.remove();
+          const startTime = performance.now();
+          previewFrame.onload = () => {
+            const endTime = performance.now();
+            const duration = (endTime - startTime).toFixed(1);
+            console.log(`⏱ Theme "${themeName}" loaded in ${duration} ms`);
+            statusBox.textContent = `Theme "${themeName}" loaded in ${duration} ms`;
           };
-          document.body.appendChild(preloader);
+          previewFrame.src = url;
         }
 
         async function loadAll(jsonFile, themeName) {
           await loadJson(jsonFile);
-          await loadTheme(themeName);
+          loadTheme(themeName);
         }
 
         function initFromURL() {
-          const jsonFile  = getParam("data","simple.json");
-          const themeName = getParam("theme","elegant");
+          const jsonFile  = getParam("data",  "simple.json");
+          const themeName = getParam("theme", "elegant");
           jsonSelect.value  = jsonFile;
           themeSelect.value = themeName;
           loadAll(jsonFile, themeName);
         }
 
-        jsonSelect.addEventListener("change",()=>{
-          setParamInURL({data:jsonSelect.value,theme:themeSelect.value});
+        jsonSelect.addEventListener("change", () => {
+          setParamInURL({ data: jsonSelect.value, theme: themeSelect.value });
           loadAll(jsonSelect.value, themeSelect.value);
         });
-        themeSelect.addEventListener("change",()=>{
-          setParamInURL({data:jsonSelect.value,theme:themeSelect.value});
+        themeSelect.addEventListener("change", () => {
+          setParamInURL({ data: jsonSelect.value, theme: themeSelect.value });
           loadAll(jsonSelect.value, themeSelect.value);
         });
 
         initFromURL();
-        function md5(str) {
-          return CryptoJS.MD5(str.trim().toLowerCase()).toString();
-        }
-
-        async function loadGravatar(email) {
-          const hash = md5(email);
-          const url = `https://www.gravatar.com/avatar/${hash}?s=200&d=identicon`;
-          $("#gravatarPhoto").src = url;
-        }
-        const script = document.createElement("script");
-        script.src = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js";
-        script.onload = () => loadGravatar("shanmugapriyakannan019@gmail.com");
-        document.body.appendChild(script);
       </script>
     </div>
+
+    <!-- ========== README Loader Section ========== -->
     <div class="section">
       <h3>Project Notes (from README.md)</h3>
       <div id="readmeContent" style="
-        background:#fff;border:1px solid #ddd;border-radius:8px;
-        padding:20px;max-width:100%;line-height:1.6;
-        font-family:system-ui,sans-serif;color:#222;">
+        background:#fff;
+        border:1px solid #ddd;
+        border-radius:8px;
+        padding:20px;
+        max-width:100%;
+        line-height:1.6;
+        font-family: system-ui, sans-serif;
+        color:#222;
+      ">
         <em>Loading README.md...</em>
       </div>
 
       <script>
         function markdownToHtml(md) {
           return md
-            .replace(/^### (.*$)/gim,'<h3>$1</h3>')
-            .replace(/^## (.*$)/gim,'<h2>$1</h2>')
-            .replace(/^# (.*$)/gim,'<h1>$1</h1>')
-            .replace(/\*\*(.*?)\*\*/gim,'<strong>$1</strong>')
-            .replace(/\*(.*?)\*/gim,'<em>$1</em>')
-            .replace(/\[(.*?)\]\((.*?)\)/gim,'<a href="$2" target="_blank">$1</a>')
-            .replace(/\n$/gim,'<br />');
+            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+            .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+            .replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2" target="_blank">$1</a>')
+            .replace(/\n$/gim, '<br />');
         }
-        async function loadReadme(){
-          const c=document.getElementById("readmeContent");
-          try{
-            const r=await fetch("./README.md",{cache:"no-store"});
-            if(!r.ok)throw new Error(r.statusText);
-            const t=await r.text(); c.innerHTML=markdownToHtml(t);
-          }catch(e){
-            c.innerHTML="<p style='color:red;'> README.md not found or failed to load.</p>";
+
+        async function loadReadme() {
+          const container = document.getElementById("readmeContent");
+          try {
+            const res = await fetch("./README.md", { cache: "no-store" });
+            if (!res.ok) throw new Error(res.statusText);
+            const text = await res.text();
+            container.innerHTML = markdownToHtml(text);
+          } catch (err) {
+            console.error("Failed to load README.md:", err);
+            container.innerHTML = "<p style='color:red;'>⚠️ README.md not found or failed to load.</p>";
           }
         }
+
         loadReadme();
       </script>
     </div>
