@@ -13,8 +13,7 @@
         background-color: #f9fafb;
         color: #333;
       }
-      h2,
-      h3 {
+      h2, h3 {
         color: #222;
         margin-bottom: 10px;
       }
@@ -33,7 +32,7 @@
         background: #f4f4f4;
         padding: 15px;
         border-radius: 8px;
-        max-width: 800px;
+        max-width: 100%;
         overflow-x: auto;
         white-space: pre-wrap;
       }
@@ -47,24 +46,28 @@
       .section {
         margin-bottom: 40px;
       }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
     </style>
   </head>
 
   <body>
-    
+    <!-- ========== PDF Extraction Section ========== -->
     <div class="section">
-      <h2>Extracted Resume Data</h2>
+      <h2>Extracted Resume Data (from PDF)</h2>
 
       <script type="module">
         import * as pdfjsLib from './pdf.mjs';
-
         const url = './shanmuga-priya-resume.pdf';
         pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
 
         const loadingTask = pdfjsLib.getDocument(url);
         loadingTask.promise.then(pdf => {
           console.log(`PDF loaded with ${pdf.numPages} pages`);
-
           const textPromises = [];
           for (let i = 1; i <= pdf.numPages; i++) {
             textPromises.push(
@@ -75,112 +78,195 @@
               )
             );
           }
-
           Promise.all(textPromises).then(pages => {
             const fullText = pages.join('\n\n');
             console.log('Extracted Text:', fullText);
 
             const name = fullText.match(/^[A-Za-z\s]+/g)?.[0]?.trim() || '';
             const email =
-              fullText.match(
-                /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
-              )?.[0] || '';
+              fullText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0] || '';
             const linkedin =
               fullText.match(/linkedin\.com\/[A-Za-z0-9\/\-\._]+/i)?.[0] || '';
             const phone =
-              fullText.match(
-                /(\+?\d{1,2}\s?)?(\(?\d{3}\)?[\s\-]?)?\d{3}[\s\-]?\d{4}/
-              )?.[0] || '';
+              fullText.match(/(\+?\d{1,2}\s?)?(\(?\d{3}\)?[\s\-]?)?\d{3}[\s\-]?\d{4}/)?.[0] || '';
             const education =
-              fullText.match(
-                /Education[\s\S]*?(?=Skills|Technical|Experience|$)/i
-              )?.[0] || '';
+              fullText.match(/Education[\s\S]*?(?=Skills|Technical|Experience|$)/i)?.[0] || '';
             const skills =
-              fullText.match(
-                /Skills[\s\S]*?(?=Experience|Projects|$)/i
-              )?.[0] || '';
+              fullText.match(/Skills[\s\S]*?(?=Experience|Projects|$)/i)?.[0] || '';
             const experience =
-              fullText.match(
-                /Experience[\s\S]*?(?=Projects|Certifications|$)/i
-              )?.[0] || '';
+              fullText.match(/Experience[\s\S]*?(?=Projects|Certifications|$)/i)?.[0] || '';
 
-            const jsonData = {
-              name,
-              email,
-              linkedin,
-              phone,
-              education,
-              skills,
-              experience,
-            };
+            const jsonData = { name, email, linkedin, phone, education, skills, experience };
 
             const pre = document.createElement('pre');
             pre.textContent = JSON.stringify(jsonData, null, 2);
             document.body.appendChild(pre);
 
-            console.log('Structured JSON Output:', jsonData);
+            console.log('Structured JSON Output (from PDF):', jsonData);
           });
         });
       </script>
     </div>
 
-    
+    <!-- ========== Theme + JSON Source Section ========== -->
     <div class="section">
       <h3>Preview JSON Résumé Themes</h3>
-      <label for="theme">Theme:</label>
-      <select id="theme">
-        <option value="elegant">Elegant</option>
-        <option value="flat">Flat</option>
-        <option value="even">Even</option>
-        <option value="professional">Professional</option>
-        <option value="macchiato">Macchiato</option>
-        <option value="kendall">Kendall</option>
-        <option value="minimalist-grid">Minimalist Grid</option>
-        <option value="executive-slate">Executive Slate</option>
-        <option value="creative-studio">Creative Studio</option>
-        <option value="data-driven">Data-Driven</option>
-        <option value="pumpkin">Pumpkin</option>
-        <option value="modern-classic">Modern Classic</option>
-      </select>
+
+      <div class="row">
+        <label for="jsonSelect">Data:</label>
+        <select id="jsonSelect">
+          <option value="simple.json">simple.json</option>
+          <option value="detailed.json">detailed.json</option>
+        </select>
+
+        <label for="theme" style="margin-left:12px;">Theme:</label>
+        <select id="theme">
+          <option value="elegant">Elegant</option>
+          <option value="flat">Flat</option>
+          <option value="even">Even</option>
+          <option value="professional">Professional</option>
+          <option value="macchiato">Macchiato</option>
+          <option value="kendall">Kendall</option>
+          <option value="minimalist-grid">Minimalist Grid</option>
+          <option value="executive-slate">Executive Slate</option>
+          <option value="creative-studio">Creative Studio</option>
+          <option value="data-driven">Data-Driven</option>
+          <option value="pumpkin">Pumpkin</option>
+          <option value="modern-classic">Modern Classic</option>
+        </select>
+      </div>
 
       <div style="margin: 15px 0;"></div>
 
+      <!-- Theme preview FIRST -->
       <iframe id="themePreview" title="JSON Resume Theme Preview"></iframe>
 
+      <!-- JSON preview AFTER the resume -->
+      <pre id="dataPreview">Loading JSON…</pre>
+
+      <div id="dataStatus" style="margin-top:8px;font:13px/1.4 system-ui;"></div>
+
+      <!-- URL Parameter + Loader Logic (with timing) -->
       <script>
-        const localJSON = './simple.json';
-        const themeSelect = document.getElementById('theme');
-        const previewFrame = document.getElementById('themePreview');
+        const $ = (sel) => document.querySelector(sel);
+        const jsonSelect   = $("#jsonSelect");
+        const themeSelect  = $("#theme");
+        const dataPreview  = $("#dataPreview");
+        const previewFrame = $("#themePreview");
+        const statusBox    = $("#dataStatus");
+        const registryBase = "https://registry.jsonresume.org/thomasdavis?theme=";
 
-        async function loadTheme(themeName) {
+        function getParam(name, fallback) {
+          const v = new URLSearchParams(location.search).get(name);
+          return v ?? fallback;
+        }
+
+        function setParamInURL(params) {
+          const url = new URL(location.href);
+          Object.entries(params).forEach(([k, v]) => {
+            if (v == null) url.searchParams.delete(k);
+            else url.searchParams.set(k, v);
+          });
+          history.replaceState(null, "", url.toString());
+        }
+
+        async function loadJson(file) {
           try {
-          
-            const response = await fetch(localJSON);
-            const resumeData = await response.json();
-
-            
-            const blob = new Blob([JSON.stringify(resumeData)], {
-              type: 'application/json',
-            });
-            const jsonUrl = URL.createObjectURL(blob);
-
-         
-            previewFrame.src = `https://registry.jsonresume.org/thomasdavis?theme=${encodeURIComponent(
-              themeName
-            )}`;
-          } catch (error) {
-            console.error('Error loading simple.json:', error);
-            previewFrame.srcdoc = `
-              <div style="padding:20px;color:red;font-family:sans-serif;">
-                ⚠️ Failed to load <b>simple.json</b> or render the theme.<br>
-                Check that <b>simple.json</b> exists in the same folder.
-              </div>`;
+            const res = await fetch(file, { cache: "no-store" });
+            if (!res.ok) throw new Error(res.statusText);
+            const json = await res.json();
+            dataPreview.textContent = JSON.stringify(json, null, 2);
+            statusBox.textContent = `Loaded ${file} — ${Object.keys(json).length} sections`;
+            return json;
+          } catch (e) {
+            console.error("Failed to load JSON:", e);
+            dataPreview.textContent = `⚠️ Failed to load ${file}`;
+            statusBox.textContent = "⚠️ JSON load failed";
+            return null;
           }
         }
-        loadTheme(themeSelect.value);
-        themeSelect.addEventListener('change', e =>
-          loadTheme(e.target.value)
-        );
+
+        // Measure load time
+        function loadTheme(themeName) {
+          const url = registryBase + encodeURIComponent(themeName);
+          const startTime = performance.now();
+          previewFrame.onload = () => {
+            const endTime = performance.now();
+            const duration = (endTime - startTime).toFixed(1);
+            console.log(`⏱ Theme "${themeName}" loaded in ${duration} ms`);
+            statusBox.textContent = `Theme "${themeName}" loaded in ${duration} ms`;
+          };
+          previewFrame.src = url;
+        }
+
+        async function loadAll(jsonFile, themeName) {
+          await loadJson(jsonFile);
+          loadTheme(themeName);
+        }
+
+        function initFromURL() {
+          const jsonFile  = getParam("data",  "simple.json");
+          const themeName = getParam("theme", "elegant");
+          jsonSelect.value  = jsonFile;
+          themeSelect.value = themeName;
+          loadAll(jsonFile, themeName);
+        }
+
+        jsonSelect.addEventListener("change", () => {
+          setParamInURL({ data: jsonSelect.value, theme: themeSelect.value });
+          loadAll(jsonSelect.value, themeSelect.value);
+        });
+        themeSelect.addEventListener("change", () => {
+          setParamInURL({ data: jsonSelect.value, theme: themeSelect.value });
+          loadAll(jsonSelect.value, themeSelect.value);
+        });
+
+        initFromURL();
+      </script>
+    </div>
+
+    <!-- ========== README Loader Section ========== -->
+    <div class="section">
+      <h3>Project Notes (from README.md)</h3>
+      <div id="readmeContent" style="
+        background:#fff;
+        border:1px solid #ddd;
+        border-radius:8px;
+        padding:20px;
+        max-width:100%;
+        line-height:1.6;
+        font-family: system-ui, sans-serif;
+        color:#222;
+      ">
+        <em>Loading README.md...</em>
+      </div>
+
+      <script>
+        function markdownToHtml(md) {
+          return md
+            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+            .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+            .replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2" target="_blank">$1</a>')
+            .replace(/\n$/gim, '<br />');
+        }
+
+        async function loadReadme() {
+          const container = document.getElementById("readmeContent");
+          try {
+            const res = await fetch("./README.md", { cache: "no-store" });
+            if (!res.ok) throw new Error(res.statusText);
+            const text = await res.text();
+            container.innerHTML = markdownToHtml(text);
+          } catch (err) {
+            console.error("Failed to load README.md:", err);
+            container.innerHTML = "<p style='color:red;'>⚠️ README.md not found or failed to load.</p>";
+          }
+        }
+
+        loadReadme();
       </script>
     </div>
   </body>
